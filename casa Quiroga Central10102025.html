@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doble Potencial: Casa de 8 Habs. en Quiroga Central, Bogotá</title>
+    <!-- Carga de Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Configuración para usar la fuente Inter y colores (VERDE ESMERALDA y ORO) -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'dark-primary': '#0a0a0a', // Casi negro para fondo principal
+                        'dark-secondary': '#1f2937', // Gris oscuro para tarjetas
+                        'accent-green': '#10b981', // Verde Esmeralda para Estabilidad y Crecimiento
+                        'accent-yellow': '#fbbf24', // Amarillo Ámbar (Oro) para Acción y Riqueza
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Estilos personalizados para la elegancia en modo oscuro */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0a0a0a; /* Fondo principal */
+        }
+        .section-divider {
+            height: 2px;
+            /* Gradiente a Verde Esmeralda */
+            background: linear-gradient(to right, #1f2937, #10b981, #1f2937);
+            margin: 4rem 0;
+        }
+        
+        /* Contenedor principal de la galería */
+        #gallery-carousel {
+            position: relative;
+        }
+
+        /* Visor de Imagen Principal (Ajuste de Alto y Flexbox para centrado) */
+        #main-image-viewer {
+            transition: height 0.3s ease;
+            /* Máximo alto para evitar que la imagen se desborde en pantallas grandes */
+            max-height: 80vh; 
+        }
+
+        /* Estilo para los botones de navegación (flechas) */
+        .nav-button {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 10;
+            background-color: rgba(0, 0, 0, 0.5); /* Semi-transparente */
+            color: white;
+            padding: 1rem 0.5rem;
+            border-radius: 9999px; /* Totalmente redondeado */
+            opacity: 0.7;
+            transition: opacity 0.3s, background-color 0.3s;
+            cursor: pointer;
+            line-height: 1; /* Asegura que el texto esté centrado */
+            font-size: 2rem;
+            border: none;
+            outline: none;
+        }
+        .nav-button:hover {
+            opacity: 1;
+            background-color: rgba(16, 185, 129, 0.7); /* Verde Esmeralda en hover */
+        }
+        /* Ajuste de posición de botones para evitar colisión con el borde en móviles */
+        #prev-button { left: 0.5rem; }
+        #next-button { right: 0.5rem; }
+        
+        /* Estilos para el Tooltip (Cuerpo Cierto) */
+        .tooltip-container {
+            position: relative;
+            display: inline-block;
+        }
+        .tooltip-content {
+            visibility: hidden;
+            width: 250px;
+            background-color: #374151;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 8px;
+            position: absolute;
+            z-index: 10;
+            bottom: 125%; 
+            left: 50%;
+            margin-left: -125px; 
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        /* Ajuste de Tooltip para móvil */
+        @media (max-width: 640px) {
+            .tooltip-content {
+                bottom: auto;
+                top: 125%; /* Aparece debajo en móvil */
+                left: 0;
+                margin-left: 0; 
+                width: 180px;
+                text-align: left;
+            }
+        }
+        .tooltip-container:hover .tooltip-content {
+            visibility: visible;
+            opacity: 1;
+        }
+        
+        /* Estilos del Modal */
+        #image-modal {
+            display: none;
+            position: fixed;
+            z-index: 100; 
+            padding-top: 50px; 
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.95); /* Fondo más oscuro para inmersión */
+            justify-content: center;
+            align-items: center;
+        }
+
+        #modal-content {
+            margin: auto;
+            display: block;
+            width: 95%; /* Ajuste al 95% del ancho */
+            max-width: 1200px;
+            max-height: 90vh; /* Ajuste al 90% del alto del viewport */
+            object-fit: contain; 
+        }
+
+        /* Botón de cierre */
+        .close-button {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            color: #f1f1f1;
+            font-size: 50px; /* Tamaño grande para móvil */
+            font-weight: lighter; /* Más sutil */
+            transition: 0.3s;
+            cursor: pointer;
+        }
+
+        .close-button:hover,
+        .close-button:focus {
+            color: #10b981; 
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        /* Botones de navegación del modal */
+        .modal-nav-button {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            color: white;
+            font-size: 3rem; /* Ajuste de tamaño base */
+            opacity: 0.8;
+            transition: opacity 0.2s;
+            cursor: pointer;
+            padding: 0.5rem;
+        }
+
+        .modal-nav-button:hover {
+            opacity: 1;
+            color: #10b981; 
+        }
+        
+        #modal-prev { left: 10px; } /* Ajuste en móvil */
+        #modal-next { right: 10px; } /* Ajuste en móvil */
+
+        @media (min-width: 1024px) {
+            /* Desktop adjustments */
+            .modal-nav-button {
+                font-size: 4rem; 
+            }
+            #modal-prev { left: 20px; }
+            #modal-next { right: 20px; }
+            .close-button {
+                top: 15px;
+                right: 35px;
+                font-size: 40px;
+            }
+        }
+        
+    </style>
+</head>
+<body class="text-gray-200">
+
+    <!-- Encabezado y Navegación -->
+    <header class="bg-dark-secondary shadow-lg sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+            <!-- Título con acento Verde Esmeralda -->
+            <h1 class="text-xl sm:text-2xl font-bold text-accent-green tracking-wide">
+                QUIROGA <span class="text-accent-yellow">CENTRAL</span>
+            </h1>
+            <a href="#contacto" class="text-sm sm:text-base bg-accent-yellow text-gray-900 font-semibold py-2 px-4 rounded-lg shadow-xl hover:bg-amber-300 transition duration-300">
+                Contactar Ahora
+            </a>
+        </div>
+    </header>
+
+    <!-- Sección Principal: Impacto y Precio -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-20">
+        <section class="text-center mb-16">
+            <h2 class="text-3xl sm:text-5xl lg:text-6xl font-extrabold mb-4 leading-tight text-white">
+                Doble Potencial: Hogar e Inversión Segura
+            </h2>
+            <!-- Énfasis con acento Verde Esmeralda -->
+            <p class="text-lg sm:text-xl text-accent-green font-light max-w-4xl mx-auto">
+                Casa Bifamiliar de <span class="font-bold">208 $m^2$ y 8 Habitaciones</span> en el Estrato 3 de Quiroga Central, Bogotá.
+            </p>
+        </section>
+
+        <!-- Galería de Fotos Interactiva (Carrusel con Botones) -->
+        <section id="galeria" class="mb-16">
+            <!-- Título con acento Verde Esmeralda -->
+            <h3 class="text-2xl sm:text-3xl font-bold text-accent-green mb-6 border-b border-accent-green pb-2">Galería de Impacto</h3>
+            
+            <!-- Contenedor del Carrusel -->
+            <div id="gallery-carousel" class="relative">
+                <!-- Visor de Imagen Principal (Ahora tiene cursor-pointer para el modal) -->
+                <div id="main-image-viewer" class="bg-dark-secondary h-auto min-h-[300px] max-h-[80vh] rounded-xl flex items-center justify-center shadow-2xl overflow-hidden p-1 sm:p-2 cursor-pointer">
+                    <img id="main-image" 
+                         src="https://cdn4.fincaraiz.com.co/repo/img/th.outside1200x1200.68c7d899c06b8_infocdn__aavkwtdhlv441qcxcdfqlovazgmrztbmabazzttcjpg.jpg" 
+                         alt="Foto principal de la propiedad (Clic para ver en grande)" 
+                         class="w-full h-full object-contain transition duration-500 ease-in-out">
+                </div>
+                
+                <!-- Botón de Navegación: Anterior -->
+                <button id="prev-button" class="nav-button" aria-label="Imagen anterior">
+                    &lt;
+                </button>
+                
+                <!-- Botón de Navegación: Siguiente -->
+                <button id="next-button" class="nav-button" aria-label="Imagen siguiente">
+                    &gt;
+                </button>
+            </div>
+
+            <!-- Indicador de Posición (Opcional, pero útil) -->
+            <p id="image-counter" class="text-center text-gray-500 mt-4 italic text-xs sm:text-sm">
+                Foto 1 de 7 (Haz clic en la imagen para ver en pantalla completa)
+            </p>
+        </section>
+        
+        <div class="section-divider"></div>
+
+        <!-- Ficha Rápida y Precio -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-10 mb-16 items-center bg-dark-secondary p-6 sm:p-8 rounded-2xl shadow-2xl border border-gray-700">
+            <div class="lg:col-span-2 text-center lg:text-left">
+                <p class="text-4xl sm:text-5xl font-extrabold text-white mb-2">
+                    $ 390.000.000 COP
+                </p>
+                <!-- Énfasis con acento Verde Esmeralda -->
+                <p class="text-lg sm:text-xl text-accent-green font-medium">
+                    Precio de Venta <span class="text-accent-yellow">(Negociable)</span>
+                </p>
+            </div>
+            <!-- Grid que se adapta a 3 columnas en móvil y escritorio -->
+            <div class="grid grid-cols-3 gap-2 sm:gap-4 text-center mt-4 lg:mt-0">
+                <div class="p-2 sm:p-3 bg-gray-800 rounded-lg">
+                    <p class="text-2xl sm:text-3xl font-bold text-accent-yellow">8</p>
+                    <p class="text-xs sm:text-sm">Habitaciones</p>
+                </div>
+                <div class="p-2 sm:p-3 bg-gray-800 rounded-lg">
+                    <p class="text-2xl sm:text-3xl font-bold text-accent-yellow">2</p>
+                    <p class="text-xs sm:text-sm">Baños</p>
+                </div>
+                <div class="p-2 sm:p-3 bg-gray-800 rounded-lg">
+                    <p class="text-2xl sm:text-3xl font-bold text-accent-yellow">208 $m^2$</p>
+                    <p class="text-xs sm:text-sm">Construidos</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección de Venta Persuasiva: Ventajas Clave -->
+        <section id="ventajas" class="mb-16">
+            <h3 class="text-3xl sm:text-4xl font-extrabold text-white mb-8 text-center">
+                ¿Por qué esta Casa es una <span class="text-accent-yellow">Oportunidad Única</span>?
+            </h3>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <!-- Ventaja 1: Tamaño y Capacidad -->
+                <div class="bg-dark-secondary p-6 rounded-xl shadow-2xl border-t-4 border-accent-green hover:shadow-accent-green/50 transition duration-300">
+                    <span class="text-4xl sm:text-5xl mb-3 block text-accent-yellow">🏡</span>
+                    <!-- Título con acento Verde Esmeralda -->
+                    <h4 class="text-xl font-bold text-accent-green mb-2">
+                        Máximo Espacio: 8 Habitaciones
+                    </h4>
+                    <p class="text-gray-400 text-sm sm:text-base">
+                        Con <span class="font-semibold">208 $m^2$</span>, esta casa ofrece un espacio inigualable. Ideal para una familia numerosa, co-living, o para generar <span class="font-semibold text-white">múltiples ingresos</span> al tiempo. Es una de las propiedades más amplias de la zona.
+                    </p>
+                </div>
+
+                <!-- Ventaja 2: Inversión / Doble Renta -->
+                <div class="bg-dark-secondary p-6 rounded-xl shadow-2xl border-t-4 border-accent-green hover:shadow-accent-green/50 transition duration-300">
+                    <span class="text-4xl sm:text-5xl mb-3 block text-accent-yellow">💰</span>
+                    <!-- Título con acento Verde Esmeralda -->
+                    <h4 class="text-xl font-bold text-accent-green mb-2">
+                        Doble Apartamento, Doble Renta
+                    </h4>
+                    <p class="text-gray-400 text-sm sm:text-base">
+                        Diseñada como **Vivienda Bifamiliar** con dos pisos completamente independientes, cada uno con 4 habitaciones, cocina y baño. <span class="font-semibold text-white">Vive en uno y arrienda el otro</span>, ¡o alquila ambos!
+                    </p>
+                </div>
+
+                <!-- Ventaja 3: Ubicación Estratégica -->
+                <div class="bg-dark-secondary p-6 rounded-xl shadow-2xl border-t-4 border-accent-green hover:shadow-accent-green/50 transition duration-300">
+                    <span class="text-4xl sm:text-5xl mb-3 block text-accent-yellow">📍</span>
+                    <!-- Título con acento Verde Esmeralda -->
+                    <h4 class="text-xl font-bold text-accent-green mb-2">
+                        Ubicación Central y Conveniente
+                    </h4>
+                    <p class="text-gray-400 text-sm sm:text-base">
+                        Ubicada en Quiroga Central, Rafael Uribe, Bogotá. Tendrás **acceso inmediato a:** Supermercados, Colegios/Universidades y Trans. Público cercano. Es una zona residencial, tranquila y bien comunicada.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <div class="section-divider"></div>
+
+        <!-- Descripción Detallada y Distribución -->
+        <section id="descripcion" class="mb-16">
+            <!-- Título con acento Verde Esmeralda -->
+            <h3 class="text-2xl sm:text-3xl font-bold text-accent-green mb-6">Descripción de la Propiedad</h3>
+
+            <div class="bg-dark-secondary p-6 sm:p-8 rounded-2xl shadow-2xl">
+                <p class="text-base sm:text-lg text-gray-300 mb-6" data-original-content>
+                    Linda casa en venta en el barrio **Quiroga Central**, ubicada en una tranquila **carrera peatonal**. Su principal atractivo es su configuración de **Vivienda Bifamiliar**, que garantiza flexibilidad y un retorno de inversión inmediato.
+                </p>
+                
+                <h4 class="text-xl sm:text-2xl font-semibold text-white mb-4">Distribución (Total: 8 Habitaciones, 2 Baños):</h4>
+                <!-- Párrafo enfatizando la distribución idéntica -->
+                <p class="text-base sm:text-lg text-gray-300 mb-4">
+                    **¡Inversión Optimizada!** Ambos apartamentos (Primer y Segundo Piso) tienen una distribución exactamente **IDÉNTICA**, lo que facilita el arriendo, la administración y el mantenimiento.
+                </p>
+                <ul class="list-disc list-inside space-y-3 text-gray-400 ml-4 text-sm sm:text-base">
+                    <li>
+                        <span class="font-bold text-accent-yellow">Cada Apartamento (x2) incluye:</span> 
+                        Cuatro (4) habitaciones, sala, comedor, cocina, patio de ropas y un baño.
+                    </li>
+                </ul>
+                
+                <!-- Clarificación de Cuerpo Cierto (Tooltip con acento Verde Esmeralda) -->
+                <p class="mt-6 text-gray-400 text-xs sm:text-base">
+                    Esta propiedad se vende bajo la figura de **<span class="font-semibold text-accent-yellow">Cuerpo Cierto</span>**
+                    <span class="tooltip-container">
+                        <!-- Icono de información con acento Verde Esmeralda -->
+                        <svg class="inline-block w-4 h-4 ml-1 text-accent-green cursor-help" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M12 16v-4"></path>
+                            <path d="M12 8h.01"></path>
+                        </svg>
+                        <span class="tooltip-content text-xs sm:text-sm">
+                            Esto significa que el inmueble se vende en su estado actual, como un todo, y el área ($208\,m^2$) es referencial. La venta se basa en los linderos y las características físicas que usted observa.
+                        </span>
+                    </span>
+                    . Código Fincaraíz: 192871339.
+                </p>
+            </div>
+        </section>
+
+        <div class="section-divider"></div>
+
+        <!-- Detalles Técnicos y Comodidades -->
+        <section id="detalles" class="mb-16">
+            <!-- Título con acento Verde Esmeralda -->
+            <h3 class="text-2xl sm:text-3xl font-bold text-accent-green mb-6">Detalles y Comodidades</h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Columna de Detalles -->
+                <div class="bg-gray-800 p-6 rounded-xl shadow-lg">
+                    <h4 class="text-xl font-bold text-white mb-3">Ficha Técnica</h4>
+                    <ul class="space-y-2 text-gray-400 text-sm">
+                        <li><span class="font-semibold text-accent-yellow">Tipo:</span> Casa (Usado)</li>
+                        <li><span class="font-semibold text-accent-yellow">Área Construida:</span> 208 $m^2$</li>
+                        <li><span class="font-semibold text-accent-yellow">Antigüedad:</span> más de 30 años</li>
+                        <li><span class="font-semibold text-accent-yellow">Estrato:</span> 3</li>
+                    </ul>
+                </div>
+                
+                <!-- Columna de Comodidades -->
+                <div class="bg-gray-800 p-6 rounded-xl shadow-lg md:col-span-2">
+                    <h4 class="text-xl font-bold text-white mb-3">Lo que incluye:</h4>
+                    <!-- Íconos de check con acento Amarillo -->
+                    <div class="grid grid-cols-2 gap-y-2 text-gray-400 text-sm">
+                        <p class="flex items-center"><span class="text-accent-yellow mr-2">✓</span> Cocina Integral</p>
+                        <p class="flex items-center"><span class="text-accent-yellow mr-2">✓</span> Instalación de gas</p>
+                        <p class="flex items-center"><span class="text-accent-yellow mr-2">✓</span> Piso en Baldosa / Mármol</p>
+                        <p class="flex items-center"><span class="text-accent-yellow mr-2">✓</span> Vivienda Bifamiliar (Doble Apto.)</p>
+                        <p class="flex items-center"><span class="text-accent-yellow mr-2">✓</span> Zona Residencial</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-8 p-4 bg-gray-800 rounded-lg text-center shadow-inner">
+                <!-- Texto de Pregunta con acento Verde Esmeralda -->
+                <p class="text-accent-green font-semibold text-sm sm:text-base">
+                    **Pregúntale al Asesor:** ¿Acepta permuta? ¿Está remodelado? ¿Dispone de parqueadero o área privada?
+                </p>
+            </div>
+        </section>
+
+        <div class="section-divider"></div>
+
+        <!-- Call to Action Final (Contacto) -->
+        <!-- Fondo con acento Verde Esmeralda para mayor impacto -->
+        <section id="contacto" class="text-center bg-accent-green/10 p-8 sm:p-10 rounded-2xl shadow-2xl border border-accent-green">
+            <h3 class="text-3xl sm:text-4xl font-extrabold text-white mb-4">
+                ¡No Dejes Pasar esta Oportunidad de Inversión!
+            </h3>
+            <p class="text-base sm:text-xl text-gray-300 mb-6">
+                Una propiedad con este potencial de renta y tamaño no durará mucho en Quiroga Central.
+            </p>
+            <!-- Botón de CTA con acento Amarillo (El más alto contraste y acción) -->
+            <a href="#" target="_blank" class="inline-block bg-accent-yellow text-gray-900 text-xl sm:text-2xl font-bold py-3 sm:py-4 px-8 sm:px-12 rounded-lg shadow-2xl hover:bg-amber-300 transition duration-300 transform hover:scale-105">
+                Solicita Mayor Información por WhatsApp
+            </a>
+            <p class="mt-4 text-xs sm:text-sm text-gray-400">
+                Valor $390.000.000 negociables.
+            </p>
+        </section>
+
+    </main>
+
+    <!-- Pie de Página -->
+    <footer class="bg-dark-secondary border-t border-gray-700 py-6 mt-10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-gray-500 text-xs sm:text-sm">
+            <p>&copy; 2025 Propiedad en Venta. Todos los derechos reservados.</p>
+            <p>Ubicación: Rafael Uribe, Quiroga Central, Bogotá, D.C.</p>
+        </div>
+    </footer>
+
+    <!-- MODAL (Galería a pantalla completa) -->
+    <div id="image-modal" class="hidden fixed top-0 left-0 w-full h-full bg-black bg-opacity-90 flex flex-col justify-center items-center">
+        <!-- Botón de cierre -->
+        <span class="close-button" id="close-modal">&times;</span>
+        
+        <!-- Contenido del modal: Imagen y botones de navegación grandes -->
+        <div class="relative w-full h-full flex justify-center items-center">
+            
+            <!-- Imagen en grande -->
+            <img id="modal-content" src="" alt="Galería de imágenes en pantalla completa" class="max-w-[95vw] max-h-[85vh] object-contain">
+            
+            <!-- Botón de navegación PREV (dentro del modal) -->
+            <span id="modal-prev" class="modal-nav-button select-none">&lt;</span>
+            
+            <!-- Botón de navegación NEXT (dentro del modal) -->
+            <span id="modal-next" class="modal-nav-button select-none">&gt;</span>
+        </div>
+    </div>
+
+
+    <!-- Script para el Carrusel y Personalización -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const mainImage = document.getElementById('main-image');
+            const mainImageViewer = document.getElementById('main-image-viewer');
+            const prevButton = document.getElementById('prev-button');
+            const nextButton = document.getElementById('next-button');
+            const imageCounter = document.getElementById('image-counter');
+            
+            // Elementos del Modal
+            const imageModal = document.getElementById('image-modal');
+            const modalImage = document.getElementById('modal-content');
+            const closeModalBtn = document.getElementById('close-modal');
+            const modalPrevBtn = document.getElementById('modal-prev');
+            const modalNextBtn = document.getElementById('modal-next');
+
+            let currentIndex = 0;
+            let imageLinks = [];
+
+            // Función para ajustar dinámicamente la altura del visor según el contenedor
+            const adjustViewerHeight = () => {
+                const viewerWidth = mainImageViewer.clientWidth;
+                // Intentamos mantener una relación de aspecto cuadrada o ligeramente panorámica
+                // 16:9 (0.5625) o 4:3 (0.75) o 1:1 (1)
+                // Usaremos un valor fijo en píxeles para el mínimo, y un máximo basado en el viewport.
+                const minHeight = 350; // Altura mínima de base
+                const maxHeight = window.innerHeight * 0.8; 
+                
+                let newHeight = viewerWidth * 0.6; // Por ejemplo, 60% del ancho para una vista panorámica
+
+                if (newHeight < minHeight) {
+                    newHeight = minHeight;
+                }
+                if (newHeight > maxHeight) {
+                    newHeight = maxHeight;
+                }
+                
+                mainImageViewer.style.height = `${newHeight}px`;
+            };
+
+
+            // Función principal para mostrar la imagen actual (tanto en la vista normal como en el modal)
+            const showImage = (index) => {
+                if (imageLinks.length === 0) return;
+
+                currentIndex = (index + imageLinks.length) % imageLinks.length;
+                const newSrc = imageLinks[currentIndex];
+                
+                // 1. Actualizar imagen principal en la página
+                mainImage.src = newSrc;
+                // Llamar al ajuste de altura después de un pequeño retraso si la imagen ya estaba cargada
+                setTimeout(adjustViewerHeight, 50); 
+
+                // 2. Actualizar imagen en el modal (si está abierto)
+                if (imageModal.classList.contains('active')) {
+                    modalImage.src = newSrc;
+                }
+
+                // 3. Actualizar el contador
+                imageCounter.textContent = `Foto ${currentIndex + 1} de ${imageLinks.length} (Haz clic en la imagen para ver en pantalla completa)`;
+                
+            };
+
+            // Lógica del Modal
+            const openModal = () => {
+                modalImage.src = imageLinks[currentIndex]; // Carga la imagen actual
+                imageModal.style.display = 'flex';
+                imageModal.classList.add('active'); // Clase de estado para la lógica de navegación
+                document.body.style.overflow = 'hidden'; // Evita el scroll de la página principal
+            };
+
+            const closeModal = () => {
+                imageModal.style.display = 'none';
+                imageModal.classList.remove('active');
+                document.body.style.overflow = 'auto'; // Restaura el scroll
+            };
+
+            // Eventos del Carrusel (Vista normal)
+            prevButton.addEventListener('click', (e) => {
+                e.stopPropagation(); // Evita que se dispare el evento de abrir el modal
+                showImage(currentIndex - 1);
+            });
+
+            nextButton.addEventListener('click', (e) => {
+                e.stopPropagation(); // Evita que se dispare el evento de abrir el modal
+                showImage(currentIndex + 1);
+            });
+            
+            // Evento para abrir el modal al hacer clic en la imagen
+            mainImageViewer.addEventListener('click', openModal);
+
+            // Eventos del Modal
+            closeModalBtn.addEventListener('click', closeModal);
+            modalPrevBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Evita cerrar el modal al hacer clic en el botón
+                showImage(currentIndex - 1);
+            });
+            modalNextBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Evita cerrar el modal al hacer clic en el botón
+                showImage(currentIndex + 1);
+            });
+
+            // Cerrar el modal al hacer clic fuera de la imagen (en el fondo)
+            imageModal.addEventListener('click', (e) => {
+                if (e.target === imageModal || e.target === closeModalBtn) {
+                    closeModal();
+                }
+            });
+
+            // Evento para cambiar de imagen con las flechas del teclado (funciona en ambas vistas)
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowLeft') {
+                    showImage(currentIndex - 1);
+                } else if (e.key === 'ArrowRight') {
+                    showImage(currentIndex + 1);
+                } else if (e.key === 'Escape') {
+                    if (imageModal.classList.contains('active')) {
+                        closeModal();
+                    }
+                }
+            });
+
+
+            // 3. Inicialización: Carga de fotos y configuración de WhatsApp
+            
+            // [PASO 1] - FOTOS REALES INSERTADAS (LISTA COMPLETA)
+            imageLinks = [
+                "https://cdn4.fincaraiz.com.co/repo/img/th.outside1200x1200.68c7d899c06b8_infocdn__aavkwtdhlv441qcxcdfqlovazgmrztbmabazzttcjpg.jpg", // 1. Fachada (Principal)
+                "https://cdn4.fincaraiz.com.co/repo/img/th.outside1200x1200.68c7d89c99cb2_infocdn__k6zug8we4vyg9vzcrvb7jnmsr0j4izgdm9gbio0pjpg.jpg", // 2. Segundo Piso
+                "https://cdn4.fincaraiz.com.co/repo/img/th.outside1200x1200.68c7d89d49d9a_infocdn__gycmfesei9cxxkop8ceusyotynfyzcibhu91iexpjpg.jpg", // 3. Habitación 1
+                "https://cdn4.fincaraiz.com.co/repo/img/th.outside1200x1200.68c7d89e1e773_infocdn__ktwlxu2fhnzqoo1jchbu8dq65swuco2d4xuxinpejpg.jpg", // 4. Habitación 2
+                "https://cdn4.fincaraiz.com.co/repo/img/th.outside1200x1200.68c7d8a153598_infocdn__soxx1su5rj8iyttmectjk07hoqmykjsdeyoavakhjpg.jpg", // 5. Habitación 3
+                "https://cdn4.fincaraiz.com.co/repo/img/th.outside1200x1200.68c7d89f62256_infocdn__cpcrk4ibjlvzpkzhathvjn0jwzhdcwryhg6ig3ozjpg.jpg",  // 6. Baño
+                "https://cdn4.fincaraiz.com.co/repo/img/th.outside1200x1200.68c7d8a003049_infocdn__pq6ozgia7flclthhaym5y5pwafrv2k4yk2nylynijpg.jpg"   // 7. Patio
+            ];
+            
+            // Mostrar la primera imagen al iniciar
+            showImage(0);
+
+
+            // [PASO 2] - CONFIGURACIÓN DE WHATSAPP
+            const numeroWhatsApp = '573212557731'; 
+            const whatsappLink = document.querySelector('#contacto a');
+            if (whatsappLink) {
+                const mensaje = encodeURIComponent("¡Hola Carlos F! Me interesa la casa en Quiroga Central (Código 192871339) que vi en tu página web. ¿Me puedes dar más detalles?");
+                whatsappLink.href = `https://wa.me/${numeroWhatsApp}?text=${mensaje}`;
+            }
+
+            // Asegurar el ajuste de altura al cambiar el tamaño de la ventana (para adaptabilidad móvil)
+            window.addEventListener('resize', adjustViewerHeight);
+            // Llamar al ajuste inicial
+            adjustViewerHeight();
+        });
+    </script>
+
+</body>
+</html>
