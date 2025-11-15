@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plan de Trading USDJPY - Recordatorio Estricto</title>
+    <!-- Incluir Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Usando la fuente Inter (por defecto de Tailwind) y un esquema de colores sobrio */
+        :root {
+            --primary-color: #3b82f6; /* Blue 500 */
+            --accent-color: #10b981; /* Emerald 500 */
+            --bg-dark: #111827; /* Gray 900 */
+            --card-dark: #1f2937; /* Gray 800 */
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-dark);
+        }
+        /* Estilo para los cards y resaltados */
+        .plan-card {
+            background-color: var(--card-dark);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+            border-left: 4px solid var(--primary-color);
+            transition: transform 0.2s;
+        }
+        .plan-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+        }
+        .text-highlight {
+            color: var(--accent-color);
+            font-weight: 600;
+        }
+        .checklist-item label {
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .checklist-item input:checked + label {
+            text-decoration: line-through;
+            color: #6b7280; /* Gray 400 */
+        }
+        /* Estilo para el botón de Reinicio */
+        .reset-button {
+            transition: all 0.2s;
+            box-shadow: 0 4px 15px -5px var(--accent-color);
+        }
+        .reset-button:hover {
+            background-color: #067c51; /* Darker Emerald */
+            transform: translateY(-1px);
+        }
+        /* Estilo para el ícono de audio */
+        .speaker-icon {
+            transition: color 0.15s;
+        }
+        /* Animación de carga para el ícono */
+        @keyframes pulse-once {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .animate-pulse-audio {
+            animation: pulse-once 0.5s infinite alternate;
+        }
+    </style>
+    <!-- Firebase Imports -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, getDoc, collection, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Establecer nivel de log para depuración de Firestore
+        setLogLevel('debug');
+        
+        let db, auth, userId;
+        const CHECKLIST_COLLECTION = 'trading_checklist';
+        const CHECKLIST_DOC_ID = 'status';
+        const TOTAL_CHECKS = 8; // Total de ítems en la checklist
+
+        // Variables globales (proporcionadas por el entorno de Canvas)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        const checklistState = {}; // Estado local de la checklist
+
+        // Referencias del DOM
+        const checklistContainer = document.getElementById('checklist-container');
+        const statusMessage = document.getElementById('auth-status');
+        const userIdDisplay = document.getElementById('user-id-display');
+
+        // Mapping of checklist IDs to Spanish text for TTS
+        const TTS_TEXT = {
+            'q1': "La primera pregunta es: ¿La tendencia de H4 es clara?",
+            'q2': "La segunda pregunta es: ¿H1 confirma la misma dirección?",
+            'q3': "La tercera pregunta es: ¿Hay retroceso a zona válida, como FVG, Media Móvil, o Soporte y Resistencia?",
+            'q4': "La cuarta pregunta es: ¿Hay reacción o confirmación clara en M5?",
+            'q5': "La quinta pregunta es: ¿Mi Stop Loss está en estructura real, con un mínimo de doce a veinte pips?",
+            'q6': "La sexta pregunta es: ¿Mi Take Profit es de dos a uno, el doble del Stop Loss?",
+            'q7': "La séptima pregunta es: ¿Estoy dentro del horario permitido, de dos a seis de la mañana o de siete a diez de la mañana?",
+            'q8': "Y la pregunta más importante: ¿Mis emociones están controladas? ¡No hagas trading por venganza o aburrimiento!",
+        };
+
+
+        // --- TTS UTILITIES (PCM to WAV Conversion) ---
+
+        // Convert Base64 string to ArrayBuffer
+        function base64ToArrayBuffer(base64) {
+            const binaryString = atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        // Convert PCM data (Int16Array) to WAV Blob
+        function pcmToWav(pcm16, sampleRate) {
+            const numChannels = 1;
+            const bytesPerSample = 2; // Int16 is 2 bytes
+            const blockAlign = numChannels * bytesPerSample;
+            const byteRate = sampleRate * blockAlign;
+
+            const dataLength = pcm16.length * bytesPerSample;
+            const buffer = new ArrayBuffer(44 + dataLength);
+            const view = new DataView(buffer);
+
+            let offset = 0;
+
+            // Write RIFF header
+            function writeString(s) {
+                for (let i = 0; i < s.length; i++) {
+                    view.setUint8(offset + i, s.charCodeAt(i));
+                }
+                offset += s.length;
+            }
+
+            // Write a 32-bit integer
+            function writeUint32(i) {
+                view.setUint32(offset, i, true);
+                offset += 4;
+            }
+
+            // Write a 16-bit integer
+            function writeUint16(i) {
+                view.setUint16(offset, i, true);
+                offset += 2;
+            }
+
+            writeString('RIFF'); // ChunkID
+            writeUint32(36 + dataLength); // ChunkSize
+            writeString('WAVE'); // Format
+
+            writeString('fmt '); // Subchunk1ID
+            writeUint32(16); // Subchunk1Size (16 for PCM)
+            writeUint16(1); // AudioFormat (1 for PCM)
+            writeUint16(numChannels); // NumChannels
+            writeUint32(sampleRate); // SampleRate
+            writeUint32(byteRate); // ByteRate
+            writeUint16(blockAlign); // BlockAlign
+            writeUint16(16); // BitsPerSample
+
+            writeString('data'); // Subchunk2ID
+            writeUint32(dataLength); // Subchunk2Size
+
+            // Write PCM data
+            for (let i = 0; i < pcm16.length; i++, offset += 2) {
+                view.setInt16(offset, pcm16[i], true);
+            }
+
+            return new Blob([view], { type: 'audio/wav' });
+        }
+
+
+        // --- MAIN AUDIO FUNCTION ---
+        async function playAudio(itemId) {
+            const itemElement = document.getElementById(itemId);
+            // Ensure we are targeting the speaker icon within the same checklist item
+            const speakerIcon = itemElement.closest('.checklist-item').querySelector('.speaker-icon');
+            const audioText = TTS_TEXT[itemId];
+
+            if (!audioText) {
+                console.error("Texto de audio no encontrado para el ítem:", itemId);
+                return;
+            }
+
+            // Start loading state
+            speakerIcon.classList.remove('text-green-500', 'text-red-500', 'text-gray-400');
+            speakerIcon.classList.add('animate-pulse-audio', 'text-yellow-400'); 
+
+            const payload = {
+                contents: [{
+                    parts: [{ text: audioText }]
+                }],
+                generationConfig: {
+                    responseModalities: ["AUDIO"],
+                    speechConfig: {
+                        // Using Kore voice as a firm, instructional tone
+                        voiceConfig: {
+                            prebuiltVoiceConfig: { voiceName: "Kore" }
+                        }
+                    }
+                },
+                model: "gemini-2.5-flash-preview-tts"
+            };
+
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+
+            let response;
+            let audioData;
+            let mimeType;
+            let sampleRate;
+
+            const MAX_RETRIES = 5;
+            for (let i = 0; i < MAX_RETRIES; i++) {
+                try {
+                    response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        if (response.status === 429 && i < MAX_RETRIES - 1) {
+                            const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                            continue;
+                        }
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    const part = result?.candidates?.[0]?.content?.parts?.[0];
+                    audioData = part?.inlineData?.data;
+                    mimeType = part?.inlineData?.mimeType;
+
+                    // MimeType for PCM 16-bit is audio/L16
+                    if (audioData && mimeType && mimeType.startsWith("audio/L16")) {
+                        const rateMatch = mimeType.match(/rate=(\d+)/);
+                        if (rateMatch) {
+                            sampleRate = parseInt(rateMatch[1], 10);
+                        } else {
+                            // Default to a common rate if parsing fails
+                            sampleRate = 24000; 
+                        }
+                        break;
+                    } else {
+                        throw new Error("Invalid TTS response structure or mime type.");
+                    }
+
+                } catch (error) {
+                    console.error("TTS generation failed:", error);
+                    if (i === MAX_RETRIES - 1 || response?.status !== 429) {
+                        speakerIcon.classList.remove('animate-pulse-audio', 'text-yellow-400');
+                        speakerIcon.classList.add('text-red-500'); // Red on final failure
+                        return;
+                    }
+                }
+            }
+
+            if (audioData && sampleRate) {
+                try {
+                    const pcmData = base64ToArrayBuffer(audioData);
+                    const pcm16 = new Int16Array(pcmData);
+                    const wavBlob = pcmToWav(pcm16, sampleRate);
+                    const audioUrl = URL.createObjectURL(wavBlob);
+
+                    const audio = new Audio(audioUrl);
+                    
+                    // Reset icon color when audio playback finishes
+                    audio.onended = () => {
+                        URL.revokeObjectURL(audioUrl);
+                        speakerIcon.classList.remove('text-green-500');
+                        speakerIcon.classList.add('text-gray-400');
+                    };
+                    
+                    audio.play().catch(e => {
+                        console.error("Audio playback failed (browser issue):", e);
+                        speakerIcon.classList.remove('text-green-500');
+                        speakerIcon.classList.add('text-red-500');
+                    });
+                    
+                    // Update icon state: playing
+                    speakerIcon.classList.remove('animate-pulse-audio', 'text-yellow-400');
+                    speakerIcon.classList.add('text-green-500'); // Green when playing
+
+                } catch (e) {
+                    console.error("Error processing or playing audio:", e);
+                    speakerIcon.classList.remove('animate-pulse-audio', 'text-yellow-400');
+                    speakerIcon.classList.add('text-red-500');
+                }
+            }
+        }
+        
+        // Expose function globally
+        window.playAudio = playAudio;
+
+        // Función de inicialización
+        async function initializeFirebase() {
+            try {
+                if (Object.keys(firebaseConfig).length === 0) {
+                     statusMessage.textContent = 'Error: Configuración de Firebase no disponible.';
+                     return;
+                }
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                // Autenticación
+                let user;
+                if (initialAuthToken) {
+                    const credentials = await signInWithCustomToken(auth, initialAuthToken);
+                    user = credentials.user;
+                } else {
+                    const credentials = await signInAnonymously(auth);
+                    user = credentials.user;
+                }
+                
+                // onAuthStateChanged is still good practice, but we ensure initial state is set right after sign-in
+                if (user) {
+                    userId = user.uid;
+                    userIdDisplay.textContent = `ID de Sesión: ${userId}`;
+                    statusMessage.textContent = '✅ Autenticación y Conexión a DB OK.';
+                    loadChecklistState();
+                    setupChecklistListeners();
+                }
+
+            } catch (error) {
+                console.error("Error al inicializar Firebase:", error);
+                // Si falla la autenticación principal, caer a un ID aleatorio para la referencia de Firestore
+                if (!auth) {
+                     const app = initializeApp(firebaseConfig);
+                     auth = getAuth(app);
+                     db = getFirestore(app);
+                }
+                userId = auth.currentUser?.uid || crypto.randomUUID(); 
+                userIdDisplay.textContent = `ID de Sesión (Fallback): ${userId.substring(0, 10)}...`;
+                statusMessage.textContent = `❌ Error al conectar: ${error.message}`;
+            }
+        }
+
+        // Obtener la referencia del documento de Firestore (privada)
+        function getChecklistDocRef() {
+            if (!db || !userId) return null;
+            // Path: /artifacts/{appId}/users/{userId}/trading_checklist/status
+            const path = `artifacts/${appId}/users/${userId}/${CHECKLIST_COLLECTION}/${CHECKLIST_DOC_ID}`;
+            return doc(db, path);
+        }
+
+        // --- LÓGICA DE PUNTUACIÓN Y COLOR ---
+        function updateScoreDisplay() {
+            // Contar cuántos ítems están marcados como "checked"
+            const checkedCount = Array.from(document.querySelectorAll('.checklist-item input[type="checkbox"]'))
+                .filter(input => input.checked).length;
+            
+            const scoreDisplay = document.getElementById('score-display');
+            if (!scoreDisplay) return;
+
+            // Calcular porcentaje y escala (0-10, para referencia visual)
+            const percentage = (checkedCount / TOTAL_CHECKS) * 100;
+            
+            // Actualizar texto: mostrar X / 8 (número de checks cumplidos)
+            scoreDisplay.textContent = `${checkedCount} / ${TOTAL_CHECKS}`;
+            
+            // Determinar color de fondo basado en el porcentaje
+            scoreDisplay.classList.remove('bg-red-700', 'bg-yellow-600', 'bg-green-700');
+
+            let bgColor;
+            
+            // Se requiere alta disciplina (87.5% = 7 de 8)
+            if (percentage >= 87.5) { 
+                bgColor = 'bg-green-700'; // GO - Disciplina Total
+            } else if (percentage >= 50) { 
+                bgColor = 'bg-yellow-600'; // CAUTION - Necesitas revisar más
+            } else { 
+                bgColor = 'bg-red-700'; // STOP - Alto Riesgo
+            }
+            
+            scoreDisplay.classList.add(bgColor, 'text-white');
+        }
+        // ------------------------------------
+
+        // Cargar el estado de la checklist desde Firestore
+        function loadChecklistState() {
+            const docRef = getChecklistDocRef();
+            if (!docRef) return;
+
+            // Escuchar cambios en tiempo real
+            onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    Object.assign(checklistState, data);
+                    console.log("Checklist cargada desde DB:", checklistState);
+                    applyChecklistStateToUI();
+                } else {
+                    console.log("No hay estado guardado. Usando valores por defecto.");
+                    // Si no existe, crear el documento con el estado inicial (todos false)
+                    const initialData = {};
+                    document.querySelectorAll('.checklist-item input[type="checkbox"]').forEach(input => {
+                        initialData[input.id] = false;
+                    });
+                    setDoc(docRef, initialData, { merge: true }).catch(err => console.error("Error al inicializar checklist:", err));
+                }
+            }, (error) => {
+                console.error("Error al escuchar cambios en Firestore:", error);
+                statusMessage.textContent = '❌ Error al cargar datos en tiempo real.';
+            });
+        }
+
+        // Aplicar el estado cargado a la UI
+        function applyChecklistStateToUI() {
+            document.querySelectorAll('.checklist-item input[type="checkbox"]').forEach(input => {
+                const isChecked = checklistState[input.id] || false;
+                input.checked = isChecked;
+            });
+            updateScoreDisplay(); // Llama a la función de puntuación al cargar
+        }
+
+        // Configurar listeners para guardar cambios en Firestore
+        function setupChecklistListeners() {
+            checklistContainer.addEventListener('change', (event) => {
+                if (event.target.type === 'checkbox') {
+                    const itemId = event.target.id;
+                    const isChecked = event.target.checked;
+                    saveChecklistItem(itemId, isChecked);
+                }
+            });
+            // Hacemos que la función resetChecklist esté disponible globalmente
+            window.resetChecklist = resetChecklist; 
+        }
+
+        // Guardar un ítem específico en Firestore
+        async function saveChecklistItem(itemId, isChecked) {
+            const docRef = getChecklistDocRef();
+            if (!docRef) return;
+
+            // Actualizar estado local y Firestore
+            checklistState[itemId] = isChecked;
+            const update = {};
+            update[itemId] = isChecked;
+
+            try {
+                // setDoc con merge: true para no sobrescribir todo el documento
+                await setDoc(docRef, update, { merge: true }); 
+                console.log(`Checklist item ${itemId} guardado: ${isChecked}`);
+                updateScoreDisplay(); // Llama a la función de puntuación al guardar
+            } catch (error) {
+                console.error("Error al guardar ítem de checklist:", error);
+                // Opcional: revertir el estado de la UI en caso de error de guardado
+            }
+        }
+
+        // NUEVA FUNCIÓN: Reiniciar la Checklist
+        async function resetChecklist() {
+            const docRef = getChecklistDocRef();
+            if (!docRef) return;
+
+            // Crear objeto con todos los checks en false
+            const resetData = {};
+            document.querySelectorAll('.checklist-item input[type="checkbox"]').forEach(input => {
+                resetData[input.id] = false;
+            });
+
+            try {
+                // Sobrescribir el documento con el nuevo estado de reinicio
+                await setDoc(docRef, resetData, { merge: true }); 
+                console.log("Checklist Reiniciada para el nuevo día.");
+                // onSnapshot se encargará de actualizar la UI automáticamente
+            } catch (error) {
+                console.error("Error al reiniciar la checklist:", error);
+            }
+        }
+
+        // Iniciar la aplicación al cargar la ventana
+        window.onload = initializeFirebase;
+
+    </script>
+</head>
+<body class="text-gray-100 p-4 md:p-8 min-h-screen">
+
+    <div class="max-w-4xl mx-auto">
+        <!-- Encabezado y Estado de Sesión -->
+        <header class="mb-8 border-b border-blue-700 pb-4">
+            <h1 class="text-4xl font-extrabold text-blue-400 mb-2">
+                🧭 PLAN DE TRADING PROFESIONAL
+            </h1>
+            <p class="text-lg text-gray-300">
+                USDJPY - Estricto para <span class="text-highlight">JOSÉ JIMY GULUMA CRIOLLO</span>
+            </p>
+            <div class="mt-2 text-sm text-gray-400">
+                <span id="auth-status">Conectando a la base de datos...</span> |
+                <span id="user-id-display" class="break-all">ID de Sesión: Cargando...</span>
+            </div>
+        </header>
+
+        <main class="grid gap-6">
+
+            <!-- Objetivo Principal -->
+            <div class="plan-card p-6 bg-red-900/40 border-l-4 border-red-500">
+                <h2 class="text-xl font-bold text-red-400 mb-2">⭐ REGLA DE ORO (MÁS IMPORTANTE)</h2>
+                <p class="text-2xl font-semibold italic text-gray-100">
+                    "Si el análisis es correcto, quédate en la operación. Tu mayor pérdida no es técnica, es <span class="text-red-300 underline">emocional</span>."
+                </p>
+            </div>
+
+
+            <!-- Sección 1: MARCO OPERATIVO -->
+            <div class="plan-card p-6">
+                <h2 class="text-xl font-bold text-primary-color mb-3">1️⃣ MARCO OPERATIVO</h2>
+                <ul class="space-y-2 text-lg">
+                    <li><span class="text-highlight">PAR PRINCIPAL:</span> USDJPY (Solo este).</li>
+                    <li><span class="text-highlight">TEMPORALIDADES:</span></li>
+                    <ul class="ml-4 list-disc list-inside">
+                        <li>H4: Tendencia principal</li>
+                        <li>H1: Dirección del día</li>
+                        <li>M15: Zona de entrada</li>
+                        <li>M5: Precisión final</li>
+                        <li class="text-red-400">❌ Prohibido M1 (Dispara emociones).</li>
+                    </ul>
+                </ul>
+            </div>
+
+            <!-- Sección 2: TIPO DE OPERACIONES PERMITIDAS (ALINEACIÓN DE TENDENCIA) -->
+            <div class="plan-card p-6 bg-green-900/40 border-l-4 border-green-500">
+                <h2 class="text-xl font-bold text-green-400 mb-3">2️⃣ TIPO DE OPERACIONES PERMITIDAS (ELIMINA PÉRDIDAS)</h2>
+                <p class="text-lg mb-2">Solo operar a favor de la tendencia de <span class="font-bold">H4 y H1</span>.</p>
+                <div class="flex space-x-4">
+                    <div class="p-3 bg-gray-800 rounded-lg flex-1">
+                        <p class="font-semibold text-xl text-green-300">SI H4 está ALCISTA:</p>
+                        <p class="text-2xl font-extrabold mt-1">✔️ Solo BUY</p>
+                        <p class="text-red-400 mt-1">❌ No SELL bajo ninguna circunstancia.</p>
+                    </div>
+                    <div class="p-3 bg-gray-800 rounded-lg flex-1">
+                        <p class="font-semibold text-xl text-green-300">SI H4 está BAJISTA:</p>
+                        <p class="text-2xl font-extrabold mt-1">✔️ Solo SELL</p>
+                        <p class="text-red-400 mt-1">❌ No BUY bajo ninguna circunstancia.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sección 3: REGLAS DE ENTRADA -->
+            <div class="plan-card p-6">
+                <h2 class="text-xl font-bold text-primary-color mb-3">3️⃣ REGLAS DE ENTRADA (DEBES CONFIRMAR TODAS)</h2>
+                <ul class="space-y-3">
+                    <li class="text-lg"><span class="text-highlight">✔️ 1. Tendencia alineada:</span> H4 y H1 deben ir en la misma dirección.</li>
+                    <li class="text-lg"><span class="text-highlight">✔️ 2. Retroceso a zona válida (M15):</span> Mitad de vela impulsiva, FVG, MA 21/50, o Pullback a S/R real.</li>
+                    <li class="text-lg"><span class="text-highlight">✔️ 3. Reacción clara en M5:</span> Rechazo de mecha fuerte, Patrón (martillo, envolvente, pinbar) o Cambio de estructura.</li>
+                </ul>
+                <p class="mt-4 text-red-400 font-bold italic">👉 Solo si las 3 condiciones están OK, puedes operar.</p>
+            </div>
+
+            <!-- Sección 4 & 5: GESTIÓN DE RIESGO Y CAPITAL -->
+            <div class="grid md:grid-cols-2 gap-6">
+                <div class="plan-card p-6 border-l-4 border-yellow-500">
+                    <h2 class="text-xl font-bold text-yellow-400 mb-3">4️⃣ STOP LOSS Y TAKE PROFIT</h2>
+                    <ul class="space-y-2 text-lg">
+                        <li><span class="text-highlight">SL:</span> Siempre en estructura real (último HH/HL).</li>
+                        <li><span class="text-highlight">SL Mínimo:</span> 12–20 pips (evitar ruido).</li>
+                        <li><span class="text-highlight">TP OBLIGATORIO:</span> <span class="text-2xl font-extrabold">Relación 2:1</span> (TP = 2 × SL).</li>
+                        <li class="text-red-400">👉 Nunca cierres por miedo si el análisis sigue válido.</li>
+                    </ul>
+                </div>
+
+                <div class="plan-card p-6 border-l-4 border-purple-500">
+                    <h2 class="text-xl font-bold text-purple-400 mb-3">5️⃣ GESTIÓN DEL CAPITAL (ANTI-OVERTRADING)</h2>
+                    <ul class="space-y-2 text-lg">
+                        <li><span class="text-highlight">Riesgo por operación:</span> <span class="text-2xl font-extrabold">0.5% máximo.</span></li>
+                        <li><span class="text-highlight">Máx. Operaciones/Día:</span> <span class="text-2xl font-extrabold">3.</span></li>
+                        <li class="mt-2 font-bold text-red-400">REGLA DE CIERRE:</li>
+                        <li class="ml-4">Si pierdes las 2 primeras → <span class="font-extrabold">CIERRAS EL DÍA.</span></li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Sección 6: HORARIOS PERMITIDOS -->
+            <div class="plan-card p-6">
+                <h2 class="text-xl font-bold text-primary-color mb-3">6️⃣ HORARIOS PERMITIDOS</h2>
+                <ul class="space-y-2 text-lg">
+                    <li>✔️ Sesión de Londres: <span class="text-highlight">2 AM – 6 AM</span> (UTC-5/NY).</li>
+                    <li>✔️ Sesión NY temprano: <span class="text-highlight">7 AM – 10 AM</span> (UTC-5/NY).</li>
+                    <li class="text-red-400 font-bold">❌ Después de las 11 AM NO OPERAR.</li>
+                    <li class="text-red-400 font-bold">❌ Nada de operar cansado o desde el celular.</li>
+                </ul>
+            </div>
+
+            <!-- Sección 7: REGLAS PSICOLÓGICAS -->
+            <div class="plan-card p-6 border-l-4 border-pink-500">
+                <h2 class="text-xl font-bold text-pink-400 mb-3">7️⃣ REGLAS PSICOLÓGICAS (ESPECIALES PARA TI)</h2>
+                <ul class="space-y-2 text-lg">
+                    <li><span class="text-highlight">NO CAMBIAR DE DIRECCIÓN:</span> Después de un SL, espera la confirmación, no cambies de Buy a Sell por impulso.</li>
+                    <li><span class="text-highlight">ESPERAR AL SL:</span> Si te saca el SL, espera <span class="font-bold">15 minutos</span> antes de reentrar.</li>
+                    <li><span class="text-highlight">CERRAR GANADORA:</span> Prohibido cerrar una operación ganadora por miedo.</li>
+                    <li class="font-bold text-red-400">PROHIBIDO: Mover el SL en contra (¡Tu mayor sangría!).</li>
+                </ul>
+            </div>
+
+            <!-- Sección 8: CHECKLIST ANTES DE ENTRAR (INTERACTIVO con Puntuación y Reinicio + Audio) -->
+            <div id="checklist-container" class="plan-card p-6 bg-gray-700 border-l-4 border-accent-color">
+                <h2 class="text-2xl font-extrabold text-accent-color mb-3">8️⃣ CHECKLIST - ¡ANTES DE ENTRAR!</h2>
+                
+                <!-- Área de Puntuación de Disciplina y Botón de Reinicio -->
+                <div class="flex flex-col sm:flex-row items-center justify-between mb-4 p-3 rounded-lg border border-gray-600 space-y-3 sm:space-y-0">
+                    <div class="flex items-center space-x-3">
+                        <p class="text-lg text-gray-200 font-semibold">Nivel de Disciplina:</p>
+                        <div id="score-display" class="text-3xl font-extrabold px-4 py-2 rounded-full shadow-lg transition-colors duration-300">
+                            0 / 8
+                        </div>
+                    </div>
+                    
+                    <!-- Botón de Reinicio -->
+                    <button onclick="resetChecklist()" 
+                            class="reset-button px-4 py-2 bg-accent-color text-white font-bold rounded-lg hover:bg-green-600 transition duration-200 w-full sm:w-auto flex items-center justify-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 19.01M20 20v-5h-.581m0-3a8.001 8.001 0 00-15.356-2.01"></path></svg>
+                        Reiniciar Diario
+                    </button>
+                </div>
+                
+                <p class="text-lg text-red-300 font-bold mb-4">👉 Si una sola es “NO”, NO ENTRES. ¡SE ESTRICTO!</p>
+
+                <div class="space-y-3">
+                    <!-- Ítems de la Checklist (con botones de audio) -->
+                    <div class="checklist-item flex items-center justify-between">
+                        <div class="flex items-center">
+                            <input id="q1" type="checkbox" class="h-5 w-5 text-accent-color rounded border-gray-600 focus:ring-accent-color bg-gray-800">
+                            <label for="q1" class="ml-3 text-lg text-gray-100">1. ¿La tendencia de H4 es clara?</label>
+                        </div>
+                        <button onclick="playAudio('q1')" title="Escuchar Recordatorio" class="text-gray-400 hover:text-accent-color focus:outline-none focus:ring-2 focus:ring-accent-color p-1 rounded-full transition duration-150">
+                            <svg class="w-6 h-6 speaker-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.899a9 9 0 010 12.728M5 10H3v4h2l3 3v-10l-3 3z"></path></svg>
+                        </button>
+                    </div>
+
+                    <div class="checklist-item flex items-center justify-between">
+                        <div class="flex items-center">
+                            <input id="q2" type="checkbox" class="h-5 w-5 text-accent-color rounded border-gray-600 focus:ring-accent-color bg-gray-800">
+                            <label for="q2" class="ml-3 text-lg text-gray-100">2. ¿H1 confirma la misma dirección?</label>
+                        </div>
+                        <button onclick="playAudio('q2')" title="Escuchar Recordatorio" class="text-gray-400 hover:text-accent-color focus:outline-none focus:ring-2 focus:ring-accent-color p-1 rounded-full transition duration-150">
+                            <svg class="w-6 h-6 speaker-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.899a9 9 0 010 12.728M5 10H3v4h2l3 3v-10l-3 3z"></path></svg>
+                        </button>
+                    </div>
+
+                    <div class="checklist-item flex items-center justify-between">
+                        <div class="flex items-center">
+                            <input id="q3" type="checkbox" class="h-5 w-5 text-accent-color rounded border-gray-600 focus:ring-accent-color bg-gray-800">
+                            <label for="q3" class="ml-3 text-lg text-gray-100">3. ¿Hay retroceso a zona válida (FVG, MA, S/R)?</label>
+                        </div>
+                        <button onclick="playAudio('q3')" title="Escuchar Recordatorio" class="text-gray-400 hover:text-accent-color focus:outline-none focus:ring-2 focus:ring-accent-color p-1 rounded-full transition duration-150">
+                            <svg class="w-6 h-6 speaker-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.899a9 9 0 010 12.728M5 10H3v4h2l3 3v-10l-3 3z"></path></svg>
+                        </button>
+                    </div>
+
+                    <div class="checklist-item flex items-center justify-between">
+                        <div class="flex items-center">
+                            <input id="q4" type="checkbox" class="h-5 w-5 text-accent-color rounded border-gray-600 focus:ring-accent-color bg-gray-800">
+                            <label for="q4" class="ml-3 text-lg text-gray-100">4. ¿Hay reacción/confirmación clara en M5?</label>
+                        </div>
+                        <button onclick="playAudio('q4')" title="Escuchar Recordatorio" class="text-gray-400 hover:text-accent-color focus:outline-none focus:ring-2 focus:ring-accent-color p-1 rounded-full transition duration-150">
+                            <svg class="w-6 h-6 speaker-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.899a9 9 0 010 12.728M5 10H3v4h2l3 3v-10l-3 3z"></path></svg>
+                        </button>
+                    </div>
+
+                    <div class="checklist-item flex items-center justify-between">
+                        <div class="flex items-center">
+                            <input id="q5" type="checkbox" class="h-5 w-5 text-accent-color rounded border-gray-600 focus:ring-accent-color bg-gray-800">
+                            <label for="q5" class="ml-3 text-lg text-gray-100">5. ¿Mi SL está en estructura real (12-20 pips mínimo)?</label>
+                        </div>
+                        <button onclick="playAudio('q5')" title="Escuchar Recordatorio" class="text-gray-400 hover:text-accent-color focus:outline-none focus:ring-2 focus:ring-accent-color p-1 rounded-full transition duration-150">
+                            <svg class="w-6 h-6 speaker-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.899a9 9 0 010 12.728M5 10H3v4h2l3 3v-10l-3 3z"></path></svg>
+                        </button>
+                    </div>
+
+                    <div class="checklist-item flex items-center justify-between">
+                        <div class="flex items-center">
+                            <input id="q6" type="checkbox" class="h-5 w-5 text-accent-color rounded border-gray-600 focus:ring-accent-color bg-gray-800">
+                            <label for="q6" class="ml-3 text-lg text-gray-100">6. ¿Mi TP es 2:1 (el doble del SL)?</label>
+                        </div>
+                        <button onclick="playAudio('q6')" title="Escuchar Recordatorio" class="text-gray-400 hover:text-accent-color focus:outline-none focus:ring-2 focus:ring-accent-color p-1 rounded-full transition duration-150">
+                            <svg class="w-6 h-6 speaker-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.899a9 9 0 010 12.728M5 10H3v4h2l3 3v-10l-3 3z"></path></svg>
+                        </button>
+                    </div>
+
+                    <div class="checklist-item flex items-center justify-between">
+                        <div class="flex items-center">
+                            <input id="q7" type="checkbox" class="h-5 w-5 text-accent-color rounded border-gray-600 focus:ring-accent-color bg-gray-800">
+                            <label for="q7" class="ml-3 text-lg text-gray-100">7. ¿Estoy dentro del horario permitido (2-6 AM / 7-10 AM)?</label>
+                        </div>
+                        <button onclick="playAudio('q7')" title="Escuchar Recordatorio" class="text-gray-400 hover:text-accent-color focus:outline-none focus:ring-2 focus:ring-accent-color p-1 rounded-full transition duration-150">
+                            <svg class="w-6 h-6 speaker-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.899a9 9 0 010 12.728M5 10H3v4h2l3 3v-10l-3 3z"></path></svg>
+                        </button>
+                    </div>
+
+                    <div class="checklist-item flex items-center justify-between">
+                        <div class="flex items-center">
+                            <input id="q8" type="checkbox" class="h-5 w-5 text-accent-color rounded border-gray-600 focus:ring-accent-color bg-gray-800">
+                            <label for="q8" class="ml-3 text-lg text-gray-100">8. ¿Emociones controladas (No venganza/aburrimiento)?</label>
+                        </div>
+                        <button onclick="playAudio('q8')" title="Escuchar Recordatorio" class="text-gray-400 hover:text-accent-color focus:outline-none focus:ring-2 focus:ring-accent-color p-1 rounded-full transition duration-150">
+                            <svg class="w-6 h-6 speaker-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.899a9 9 0 010 12.728M5 10H3v4h2l3 3v-10l-3 3z"></path></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sección 9: LO QUE DEBES EVITAR PARA SIEMPRE -->
+            <div class="plan-card p-6 bg-red-900/40 border-l-4 border-red-500">
+                <h2 class="text-xl font-bold text-red-400 mb-3">9️⃣ LO QUE DEBES EVITAR PARA SIEMPRE</h2>
+                <ul class="space-y-2 text-lg list-disc list-inside text-gray-200">
+                    <li class="font-bold">No operar en contra de H4.</li>
+                    <li class="font-bold">No operar en laterales visibles.</li>
+                    <li class="font-bold">No operar sin retroceso claro.</li>
+                    <li class="font-bold">No usar SL demasiado corto (menos de 12 pips).</li>
+                    <li class="font-bold">No operar después de 3 pérdidas (cierras el día con 2).</li>
+                    <li class="font-bold">No operar por impulso o aburrimiento.</li>
+                    <li class="font-bold text-2xl text-red-300">NO REVENGE TRADING (compensar una pérdida).</li>
+                </ul>
+            </div>
+
+        </main>
+
+        <footer class="mt-10 pt-4 border-t border-gray-700 text-center text-gray-500 text-sm">
+            &copy; Plan Personalizado de Trading USDJPY. La disciplina es tu única ventaja.
+        </footer>
+    </div>
+</body>
+</html>
